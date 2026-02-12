@@ -6,12 +6,10 @@
     <title>Valentines for Sara</title>
     <style>
       :root {
-        --bg-url: url("background.jpg"); /* replace with your image path */
+        --bg-url: url("background.jpg");
         --card-bg: rgba(0, 0, 0, 0.55);
         --text: #ffffff;
         --muted: rgba(255, 255, 255, 0.85);
-        --yes: #ff3b7a;
-        --no: #2b2b2b;
         --stroke: rgba(255, 255, 255, 0.18);
       }
 
@@ -87,6 +85,7 @@
         outline: none;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
         transition: transform 120ms ease, filter 120ms ease, opacity 160ms ease;
+        will-change: transform;
       }
 
       button:active {
@@ -105,7 +104,7 @@
         position: absolute;
         left: 58%;
         top: 58%;
-        transform: translate(-50%, -50%);
+        transform: translate3d(-50%, -50%, 0);
       }
 
       .hidden {
@@ -122,15 +121,14 @@
         min-height: 1.2em;
       }
 
-      /* Animations */
       @keyframes shake {
-        0% { transform: translateX(0); }
-        15% { transform: translateX(-6px); }
-        30% { transform: translateX(6px); }
-        45% { transform: translateX(-5px); }
-        60% { transform: translateX(5px); }
-        75% { transform: translateX(-3px); }
-        100% { transform: translateX(0); }
+        0%   { transform: translate3d(0, 0, 0); }
+        15%  { transform: translate3d(-6px, 0, 0); }
+        30%  { transform: translate3d(6px, 0, 0); }
+        45%  { transform: translate3d(-5px, 0, 0); }
+        60%  { transform: translate3d(5px, 0, 0); }
+        75%  { transform: translate3d(-3px, 0, 0); }
+        100% { transform: translate3d(0, 0, 0); }
       }
 
       @keyframes pulse {
@@ -147,16 +145,8 @@
         animation: pulse 900ms ease-in-out infinite;
       }
 
-      /* Reduced motion */
       @media (prefers-reduced-motion: reduce) {
         .shake, .pulse { animation: none !important; }
-        * { scroll-behavior: auto !important; }
-      }
-
-      .hint {
-        margin-top: 10px;
-        font-size: 13px;
-        color: rgba(255, 255, 255, 0.72);
       }
     </style>
   </head>
@@ -174,7 +164,6 @@
       </section>
 
       <div class="message" id="message" aria-live="polite"></div>
-      <div class="hint">Tip: set your background image by replacing background.jpg in the CSS.</div>
     </main>
 
     <script>
@@ -185,62 +174,44 @@
         const message = document.getElementById("message");
 
         let yesStage = 0; // 0 = first click, 1 = confirm click, 2 = done
-
-        function clamp(n, min, max) {
-          return Math.max(min, Math.min(max, n));
-        }
+        let rafScheduled = false;
 
         function placeNoButtonRandomly() {
           const pf = playfield.getBoundingClientRect();
-          const b = noBtn.getBoundingClientRect();
+          const nb = noBtn.getBoundingClientRect();
 
-          // Keep button fully inside playfield with a small padding
           const pad = 12;
-          const maxX = pf.width - b.width - pad;
-          const maxY = pf.height - b.height - pad;
+          const maxX = Math.max(pad, pf.width - nb.width - pad);
+          const maxY = Math.max(pad, pf.height - nb.height - pad);
 
-          const x = Math.random() * maxX + pad;
-          const y = Math.random() * maxY + pad;
+          const x = pad + Math.random() * (maxX - pad);
+          const y = pad + Math.random() * (maxY - pad);
 
           noBtn.style.left = x + "px";
           noBtn.style.top = y + "px";
-          noBtn.style.transform = "translate(0, 0)";
+          noBtn.style.transform = "translate3d(0, 0, 0)";
         }
 
-        function dodgeNoButton() {
+        function dodgeNoButtonOptimized() {
           if (noBtn.classList.contains("hidden")) return;
-          placeNoButtonRandomly();
+          if (rafScheduled) return;
+          rafScheduled = true;
+
+          requestAnimationFrame(() => {
+            placeNoButtonRandomly();
+            rafScheduled = false;
+          });
         }
 
-        // Move "No" whenever she tries to click it (and also on hover/touch)
-        ["mouseenter", "mouseover", "pointerdown", "mousedown", "touchstart"].forEach((evt) => {
-          noBtn.addEventListener(evt, (e) => {
-            // Prevent accidental click on touch devices
-            e.preventDefault?.();
-            dodgeNoButton();
-          }, { passive: false });
-        });
-
-        // Also move if pointer gets close (fun)
-        playfield.addEventListener("pointermove", (e) => {
-          if (noBtn.classList.contains("hidden")) return;
-
-          const pf = playfield.getBoundingClientRect();
-          const nb = noBtn.getBoundingClientRect();
-
-          const px = e.clientX;
-          const py = e.clientY;
-
-          // Distance from pointer to center of "No"
-          const cx = nb.left + nb.width / 2;
-          const cy = nb.top + nb.height / 2;
-          const dx = px - cx;
-          const dy = py - cy;
-          const dist = Math.hypot(dx, dy);
-
-          // If close enough, dodge
-          if (dist < 90) dodgeNoButton();
-        });
+        // Only move when they try to click it / tap it
+        noBtn.addEventListener(
+          "pointerdown",
+          (e) => {
+            e.preventDefault(); // stops the click from landing on touch devices
+            dodgeNoButtonOptimized();
+          },
+          { passive: false }
+        );
 
         function setButtonsHidden(hidden) {
           if (hidden) {
@@ -253,7 +224,6 @@
         }
 
         function animateYesToAreYouSure() {
-          // Shake once, then start pulsing with new text
           yesBtn.classList.add("shake");
           setTimeout(() => yesBtn.classList.remove("shake"), 540);
 
@@ -278,15 +248,10 @@
           }
         });
 
-        // On load, randomize first "No" position a bit for consistency across screens
         window.addEventListener("load", () => {
-          // Put it somewhere not too close to the center where "Yes" is
           placeNoButtonRandomly();
-          // Nudge again so it feels lively
-          setTimeout(placeNoButtonRandomly, 250);
         });
 
-        // Keep the "No" button inside on resize
         window.addEventListener("resize", () => {
           if (!noBtn.classList.contains("hidden")) placeNoButtonRandomly();
         });
